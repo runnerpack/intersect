@@ -23,38 +23,6 @@ static VALUE
 /* Thanks, Pythagoras, ya kooky old Samian! */
 #define LENGTH(x,y) rb_float_new( sqrt( NUM2DBL(x) * NUM2DBL(x) + NUM2DBL(y) * NUM2DBL(y) ) )
 
-/* Initialize a new Point instance */
-static VALUE rb_point_init(int argc, VALUE* argv, VALUE self)
-{
-
-    VALUE
-		x = INT2NUM(0),
-		y = INT2NUM(0);
-
-    if (argc > 2) {  // there should only be 1 or 2 arguments
-        rb_raise(rb_eArgError, "Wrong number of arguments");
-    }
-
-    if (argc > 0) {
-		x = INT2NUM(argv[0]);
-		if (argc > 1) y = INT2NUM(argv[1]);
-    }
-
-	rb_iv_set(self, "@x", x);
-	rb_iv_set(self, "@y", y);
-	rb_iv_set(self, "@length", LENGTH(x, y));
-	rb_iv_set(self, "@slood", Qfalse);
-
-	return self;
-}
-
-// // /* Return the Point's X value */
-// // static VALUE rb_point_x_get(VALUE self)
-// // {
-	// // VALUE x = rb_iv_get(self, "@x");
-	// // return x;
-// // }
-
 /* Set the Point's X value */
 static VALUE rb_point_x_set(VALUE self, VALUE val)
 {
@@ -62,13 +30,6 @@ static VALUE rb_point_x_set(VALUE self, VALUE val)
 	rb_iv_set(self, "@slood", Qtrue);
 	return self;
 }
-
-// // /* Return the Point's Y value */
-// // static VALUE rb_point_y_get(VALUE self)
-// // {
-	// // VALUE y = rb_iv_get(self, "@y");
-	// // return y;
-// // }
 
 /* Set the Point's Y value */
 static VALUE rb_point_y_set(VALUE self, VALUE val)
@@ -94,8 +55,33 @@ static VALUE rb_point_length_get(VALUE self)
 	return length;
 }
 
+/* Initialize a new Point instance */
+static VALUE rb_point_init(int argc, VALUE* argv, VALUE self)
+{
 
-/*/ "Hit" stuff ///////////////////////////*/
+    VALUE
+		x = INT2NUM(0),
+		y = INT2NUM(0);
+
+    if (argc > 2) {  // there should only be 0, 1 or 2 arguments
+        rb_raise(rb_eArgError, "Wrong number of arguments");
+    } else if (argc > 0) {
+		// x = INT2NUM(argv[0]);
+		// if (argc > 1) y = INT2NUM(argv[1]);
+		x = argv[0];
+		if (argc > 1) y = argv[1];
+    }
+
+	rb_iv_set(self, "@x", x);
+	rb_iv_set(self, "@y", y);
+	rb_iv_set(self, "@length", LENGTH(x, y));
+	rb_iv_set(self, "@slood", Qfalse);
+
+	return self;
+}
+
+
+/*/ Hit class /////////////////////////////*/
 
 static VALUE rb_hit_init(VALUE self)
 {
@@ -107,7 +93,7 @@ static VALUE rb_hit_init(VALUE self)
 	return self;
 }
 
-/*/ "Sweep" stuff /////////////////////////*/
+/*/ Sweep class ///////////////////////////*/
 
 static VALUE rb_sweep_init(VALUE self)
 {
@@ -118,28 +104,44 @@ static VALUE rb_sweep_init(VALUE self)
 }
 
 
-/*/ "AABB" stuff //////////////////////////*/
+/*/ AABB class ////////////////////////////*/
+
+/* Set the AABB's "radius" */
+static VALUE rb_aabb_half_set(VALUE self, VALUE val)
+{
+    VALUE
+		half,
+		radius[2];
+
+	radius[0] = INT2NUM(abs(NUM2INT(rb_iv_get(val, "@x"))));
+	radius[1] = INT2NUM(abs(NUM2INT(rb_iv_get(val, "@y"))));
+
+	half = rb_class_new_instance(2, radius, c_Point);
+	rb_iv_set(self, "@half", half);
+
+	return self;
+}
 
 static VALUE rb_aabb_init(int argc, VALUE* argv, VALUE self)
 {
 
     VALUE
-		center[2] = {INT2NUM(0), INT2NUM(0)},
-		radius[2] = {INT2NUM(1), INT2NUM(1)},
-		pos = rb_class_new_instance(2, center, c_Point),
-		half = rb_class_new_instance(2, radius, c_Point);
+		pos,
+		half,
+		radius[2] = { INT2NUM(1), INT2NUM(1) };
 
-    if (argc > 2) {  // there should only be 1 or 2 arguments
+    if (argc > 2) {  // there should only be 0, 1 or 2 arguments
         rb_raise(rb_eArgError, "Wrong number of arguments");
-    }
-
-    if (argc > 0) {
+    } else if (argc > 0) {
 		pos = argv[0];
 		if (argc > 1) half = argv[1];
-    }
+    } else {
+		pos = rb_class_new_instance(0, NULL, c_Point);
+		half = rb_class_new_instance(2, radius, c_Point);
+	}
 
 	rb_iv_set(self, "@pos", pos);
-	rb_iv_set(self, "@half", half);
+	rb_aabb_half_set(self, half);
 
 	return self;
 }
@@ -183,6 +185,7 @@ void Init_intersect()
 	/* An axis-aligned bounding box */
 	c_AABB = rb_define_class_under(m_Intersect, "AABB", rb_cObject);
 	rb_define_method(c_AABB, "initialize", rb_aabb_init, -1);
+	rb_define_method(c_AABB, "half=", rb_aabb_half_set, 1);
 
 	rb_define_attr(c_AABB, "pos", TRUE, TRUE);
 	rb_define_attr(c_AABB, "half", TRUE, FALSE);
