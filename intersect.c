@@ -55,6 +55,45 @@ static VALUE rb_point_length_get(VALUE self)
 	return length;
 }
 
+/* Return a copy of the Point normalized to unit length */
+static VALUE rb_point_normalize(VALUE self)
+{
+	VALUE
+		length = rb_point_length_get(self),
+		point,
+		inv_length;
+
+	if (length <= 0) return Qnil;
+
+	point = rb_class_new_instance(0, NULL, c_Point);
+
+	// I'm not sure all this inversion stuff is necessary...
+	inv_length = 1.0 / NUM2DBL(length);
+	rb_iv_set(point, "@x", rb_float_new(NUM2DBL(rb_iv_get(self, "@x")) * inv_length));
+	rb_iv_set(point, "@y", rb_float_new(NUM2DBL(rb_iv_get(self, "@y")) * inv_length));
+	rb_iv_set(point, "@slood", Qtrue);
+
+	return point;
+}
+
+/* Normalize the Point in place */
+static VALUE rb_point_normalize_bang(VALUE self)
+{
+	VALUE
+		length = rb_point_length_get(self),
+		inv_length;
+
+	if (length <= 0) return Qnil;
+
+	// I'm not sure all this inversion stuff is necessary...
+	inv_length = 1.0 / NUM2DBL(length);
+	rb_iv_set(self, "@x", rb_float_new(NUM2DBL(rb_iv_get(self, "@x")) * inv_length));
+	rb_iv_set(self, "@y", rb_float_new(NUM2DBL(rb_iv_get(self, "@y")) * inv_length));
+	rb_iv_set(self, "@slood", Qtrue);
+
+	return self;
+}
+
 /* Initialize a new Point instance */
 static VALUE rb_point_init(int argc, VALUE* argv, VALUE self)
 {
@@ -110,7 +149,7 @@ static VALUE rb_sweep_init(VALUE self)
 static VALUE rb_aabb_half_set(VALUE self, VALUE val)
 {
     VALUE
-		half,
+		half = Qnil,
 		radius[2];
 
 	radius[0] = INT2NUM(abs(NUM2INT(rb_iv_get(val, "@x"))));
@@ -122,12 +161,64 @@ static VALUE rb_aabb_half_set(VALUE self, VALUE val)
 	return self;
 }
 
+static VALUE rb_aabb_intersect_point(VALUE self, VALUE point)
+{
+	VALUE
+		hit,
+		dx, dy,
+		px, py,
+		sx, sy;
+
+	// Find the overlap for the X axis
+	dx = rb_iv_get(point, "@x") - rb_iv_get(rb_iv_get(self, "@pos"), "@x");
+    px = rb_iv_get(rb_iv_get(self, "@half"), "@x") - rb_funcall(dx, rb_intern("abs"), 0);
+	if (NUM2DBL(px) <= 0) return Qnil;
+
+	// Find the overlap for the Y axis
+	dy = rb_iv_get(point, "@y") - rb_iv_get(rb_iv_get(self, "@pos"), "@y");
+    py = rb_iv_get(rb_iv_get(self, "@half"), "@y") - rb_funcall(dy, rb_intern("abs"), 0);
+	if (NUM2DBL(py) <= 0) return Qnil;
+
+	// Use the axis with the smallest overlap
+	hit = rb_class_new_instance(0, NULL, c_Hit);
+	if (px < py) {
+		sx = rb_funcall(dx, rb_intern("<=>"), 1, INT2NUM(0));
+		rb_iv_set(rb_iv_get(hit, "@delta"), "@x", rb_float_new(NUM2DBL(px) * NUM2DBL(sx)));
+		rb_iv_set(rb_iv_get(hit, "@normal"), "@x", sx);
+		rb_iv_set(rb_iv_get(hit, "@pos"), "@x", NUM2DBL(rb_iv_get(rb_iv_get(self, "@pos"), "@x")) + (NUM2DBL(rb_iv_get(rb_iv_get(self, "@half"), "@x")) * NUM2DBL(sx)));
+		rb_iv_set(rb_iv_get(hit, "@pos"), "@y", rb_iv_get(point, "@y"));
+	} else {
+		sy = rb_funcall(dy, rb_intern("<=>"), 1, INT2NUM(0));
+		rb_iv_set(rb_iv_get(hit, "@delta"), "@y", rb_float_new(NUM2DBL(py) * NUM2DBL(sy)));
+		rb_iv_set(rb_iv_get(hit, "@normal"), "@y", sy);
+		rb_iv_set(rb_iv_get(hit, "@pos"), "@x", rb_iv_get(point, "@x"));
+		rb_iv_set(rb_iv_get(hit, "@pos"), "@y", NUM2DBL(rb_iv_get(rb_iv_get(self, "@pos"), "@y")) + (NUM2DBL(rb_iv_get(rb_iv_get(self, "@half"), "@y")) * NUM2DBL(sy)));
+	}
+
+	return hit;
+}
+
+static VALUE rb_aabb_intersect_segment(VALUE self, VALUE segment)
+{
+	return Qnil;
+}
+
+static VALUE rb_aabb_intersect_aabb(VALUE self, VALUE other)
+{
+	return Qnil;
+}
+
+static VALUE rb_aabb_sweep_aabb(VALUE self, VALUE other)
+{
+	return Qnil;
+}
+
 static VALUE rb_aabb_init(int argc, VALUE* argv, VALUE self)
 {
 
     VALUE
-		pos,
-		half,
+		pos = Qnil,
+		half = Qnil,
 		radius[2] = { INT2NUM(1), INT2NUM(1) };
 
     if (argc > 2) {  // there should only be 0, 1 or 2 arguments
@@ -162,6 +253,8 @@ void Init_intersect()
 	rb_define_method(c_Point, "x=", rb_point_x_set, 1);
 	rb_define_method(c_Point, "y=", rb_point_y_set, 1);
 	rb_define_method(c_Point, "length", rb_point_length_get, 0);
+	rb_define_method(c_Point, "normalize", rb_point_normalize, 0);
+	rb_define_method(c_Point, "normalize!", rb_point_normalize_bang, 0);
 
 	rb_define_attr(c_Point, "x", TRUE, FALSE);
 	rb_define_attr(c_Point, "y", TRUE, FALSE);
@@ -186,6 +279,12 @@ void Init_intersect()
 	c_AABB = rb_define_class_under(m_Intersect, "AABB", rb_cObject);
 	rb_define_method(c_AABB, "initialize", rb_aabb_init, -1);
 	rb_define_method(c_AABB, "half=", rb_aabb_half_set, 1);
+
+	/* The actual intersection tests */
+	rb_define_method(c_AABB, "intersect_point", rb_aabb_intersect_point, 1);
+	rb_define_method(c_AABB, "intersect_segment", rb_aabb_intersect_segment, 1);
+	rb_define_method(c_AABB, "intersect_AABB", rb_aabb_intersect_aabb, 1);
+	rb_define_method(c_AABB, "sweep_AABB", rb_aabb_sweep_aabb, 1);
 
 	rb_define_attr(c_AABB, "pos", TRUE, TRUE);
 	rb_define_attr(c_AABB, "half", TRUE, FALSE);
